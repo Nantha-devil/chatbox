@@ -57,28 +57,33 @@ def get_response(user_input):
 @app.route('/', methods=['GET', 'POST'])
 def chat():
     # Reset conversation on page load
-    while True:
-        if request.method == 'GET':
-            session['conversation'] = []
+    if 'conversation' not in session:
+        session['conversation'] = []
 
-        if 'conversation' not in session:
-            session['conversation'] = []
+    if request.method == 'POST':
+        user_input = request.form['user_input']
+        bot_response = get_response(user_input)
 
-        if request.method == 'POST':
-            user_input = request.form['user_input']
-            bot_response = get_response(user_input)
-            session['conversation'].append(("🧑 You", user_input))
-            session['conversation'].append(("🤖 Bot", bot_response))
-            session.modified = True
+        # Update conversation
+        session['conversation'].append(("🧑 You", user_input))
+        session['conversation'].append(("🤖 Bot", bot_response))
+        session.modified = True
 
-            cursor.execute("INSERT INTO chat(user,message)VALUES(%s,%s)",('🧑 You',user_input))
-            cursor.execute("INSERT INTO chat(user,message)VALUES(%s,%s)",("🤖 Bot", bot_response))
-            db.commit()
-            cursor.close()
-            db.close()
-        
+        # Create a new DB connection and cursor for each request
+        db = mysql.connector.connect(host='localhost', user='root', password='', database='chatbox')
+        cursor = db.cursor()
 
-        return render_template('chat.html', conversation=session['conversation'])
+        cursor.execute("INSERT INTO chat(user,message) VALUES(%s,%s)", ('🧑 You', user_input))
+        cursor.execute("INSERT INTO chat(user,message) VALUES(%s,%s)", ("🤖 Bot", bot_response))
+        db.commit()
+
+        cursor.close()
+        db.close()
+
+    return render_template('chat.html', conversation=session['conversation'])
+
+
+
     
 
 
