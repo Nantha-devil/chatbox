@@ -1,96 +1,147 @@
-from flask import Flask, render_template, request, session, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, session, send_file
 import mysql.connector
+import pandas as pd
+import io
+from datetime import datetime
+
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
 
- #save the database
-db=mysql.connector.connect(host='localhost',user='root',password='',database='chatbox')
-cursor=db.cursor()
+# MySQL connection
+db = mysql.connector.connect(
+    host="localhost",
+    user="root",
+    password="",
+    database="chatbotdb"
+)
+cursor = db.cursor(dictionary=True)
 
-def get_response(user_input):
-    user_input = user_input.lower()
-
-    if "headache" in user_input:
-        return "🤕 Drink water and rest. If it persists, consult a doctor."
-    elif "fever" in user_input:
-        return "🌡️ Take paracetamol and stay hydrated."
-    elif "cold" in user_input or "cough" in user_input:
-        return "🤧 Drink warm fluids and rest well."
-    elif "sore throat" in user_input:
-        return "🗣️ Gargle with warm salt water."
-    elif "stomach pain" in user_input:
-        return "🤢 Eat light and avoid spicy food."
-    elif "diabetes" in user_input:
-        return "🩸 Follow a low-sugar diet and check sugar regularly."
-    elif "bp" in user_input or "blood pressure" in user_input:
-        return "💓 Avoid salty food and monitor your BP."
-    elif "exercise" in user_input:
-        return "🏃 Do 30 minutes of activity daily."
-    elif "diet" in user_input:
-        return "🥗 Eat balanced meals with fruits and veggies."
-    elif "sleep" in user_input:
-        return "😴 Get 7-8 hours of quality sleep."
-    elif "stress" in user_input:
-        return "🧘 Try breathing exercises or yoga."
-    elif "skin" in user_input:
-        return "🧴 Stay hydrated and use moisturizers."
-    elif "hair" in user_input:
-        return "💇 Oil your hair and avoid heat tools."
-    elif "eyes" in user_input:
-        return "👀 Take screen breaks and blink often."
-    elif "hydration" in user_input:
-        return "💧 Drink at least 8 glasses of water."
-    elif "vitamin d" in user_input:
-        return "☀️ Get morning sunlight and eat dairy."
-    elif "weight loss" in user_input:
-        return "⚖️ Avoid junk food and stay active."
-    elif "covid" in user_input:
-        return "😷 Wear a mask and wash hands."
-    elif "heart" in user_input:
-        return "❤️ Avoid fried foods and get regular checks."
-    elif "pregnancy" in user_input:
-        return "🤰 Eat healthy and follow your doctor’s advice."
-
-    else:
-        return "❓ Sorry, I don't have a tip for that. Try asking about fever, stress, or hydration."
-
-@app.route('/', methods=['GET', 'POST'])
-def chat():
-    # Reset conversation on page load
-    if 'conversation' not in session:
-        session['conversation'] = []
-
+@app.route('/login', methods=['GET', 'POST'])
+def login():
     if request.method == 'POST':
-        user_input = request.form['user_input']
-        bot_response = get_response(user_input)
+        uname = request.form['username']
+        pwd = request.form['password']
+        cursor.execute("SELECT * FROM users WHERE username=%s AND password=%s", (uname, pwd))
+        user = cursor.fetchone()
+        if user:
+            session['user_id'] = user['id']
+            return redirect('/chat')
+        else:
+            return "Invalid credentials"
+    return render_template('login.html')
 
-        # Update conversation
-        session['conversation'].append(("🧑 You", user_input))
-        session['conversation'].append(("🤖 Bot", bot_response))
-        session.modified = True
+@app.route('/chat')
+def chat():
+    if 'user_id' not in session:
+        return redirect('/')
+    return render_template('chat.html')
 
-        # Create a new DB connection and cursor for each request
-        db = mysql.connector.connect(host='localhost', user='root', password='', database='chatbox')
-        cursor = db.cursor()
+@app.route('/send', methods=['POST'])
+def send():
+    if 'user_id' not in session:
+        return 'Unauthorized', 401
+    msg = request.form['message'].lower()
 
-        cursor.execute("INSERT INTO chat(user,message) VALUES(%s,%s)", ('🧑 You', user_input))
-        cursor.execute("INSERT INTO chat(user,message) VALUES(%s,%s)", ("🤖 Bot", bot_response))
-        db.commit()
+    # Simple rule-based replies using if statements
+    if msg == 'hi' or msg == 'hello':
+        reply = 'Hello! How can I help you today?'
+    elif msg == 'how are you':
+        reply = 'I am just a bot, but I am doing fine. Thanks for asking!'
+    elif msg == 'bye':
+        reply = 'Goodbye! Have a great day!'
+    elif 'your name' in msg:
+        reply = 'I am your friendly chatbot.'
+    else:
+        reply = "I'm not sure how to respond to that."
 
-        cursor.close()
-        db.close()
+    cursor.execute("INSERT INTO chats (user_id, message, reply) VALUES (%s, %s, %s)",
+                (session['user_id'], msg, reply))
+    db.commit()
+    return reply
 
-    return render_template('chat.html', conversation=session['conversation'])
 
+@app.route('/history')
+def history():
+    if 'user_id' not in session:
+        return redirect('/')
+    cursor.execute("SELECT * FROM chats WHERE user_id=%s ORDER BY timestamp", (session['user_id'],))
+    chats = cursor.fetchall()
+    return {'chats': chats}
 
+# Admin Login
+@app.route('/admin', methods=['GET', 'POST'])
+def admin_login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        if username == 'admin' and password == 'admin123':
+            session['admin'] = True
+            return redirect('/admin-dashboard')
+        else:
+            return "Invalid admin credentials"
+    return render_template('admin_login.html')
 
-    
+@app.route('/admin-dashboard')
+def admin_dashboard():
+    if not session.get('admin'):
+        return redirect('/admin')
+    cursor.execute("""
+        SELECT u.username, c.message, c.reply, c.timestamp 
+        FROM chats c 
+        JOIN users u ON c.user_id = u.id 
+        ORDER BY c.timestamp DESC
+    """)
+    data = cursor.fetchall()
+    return render_template('admin_dashboard.html', chats=data)
 
+@app.route('/admin-logout')
+def admin_logout():
+    session.pop('admin', None)
+    return redirect('/admin')
+
+@app.route('/export-chats')
+def export_chats():
+    if not session.get('admin'):
+        return redirect('/admin')
+    cursor.execute("""
+        SELECT u.username, c.message, c.reply, c.timestamp 
+        FROM chats c 
+        JOIN users u ON c.user_id = u.id 
+        ORDER BY c.timestamp DESC
+    """)
+    data = cursor.fetchall()
+    df = pd.DataFrame(data)
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Chats', index=False)
+    output.seek(0)
+    return send_file(output, download_name="chat_logs.xlsx", as_attachment=True)
 
 @app.route('/clear')
 def clear():
     session['conversation'] = []
     return redirect(url_for('chat'))
+
+
+@app.route('/', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        uname = request.form['username']
+        email = request.form['email']
+        pwd = request.form['password']
+        dob = request.form['dob']
+        
+        # Optional: prevent duplicate usernames
+        cursor.execute("SELECT * FROM users WHERE username=%s", (uname,))
+        if cursor.fetchone():
+            return "Username already exists"
+
+        cursor.execute("INSERT INTO users (username, email, password, dob) VALUES (%s, %s, %s, %s)",
+                       (uname, email, pwd, dob))
+        db.commit()
+        return redirect('/chat')
+    return render_template('signup.html')
+
 
 if __name__ == '__main__':
     app.run(debug=True)
