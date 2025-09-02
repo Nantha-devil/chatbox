@@ -42,22 +42,52 @@ def send():
         return 'Unauthorized', 401
     msg = request.form['message'].lower()
 
-    # Simple rule-based replies using if statements
-    if msg == 'hi' or msg == 'hello':
-        reply = 'Hello! How can I help you today?'
+    # Medical chatbot using if-else conditions
+    if msg in ['hi', 'hello']:
+        reply = 'Hello! I am your medical assistant bot. Ask me about any disease.'
     elif msg == 'how are you':
-        reply = 'I am just a bot, but I am doing fine. Thanks for asking!'
+        reply = 'I am just a bot, but I am ready to help with medical info!'
     elif msg == 'bye':
-        reply = 'Goodbye! Have a great day!'
-    elif 'your name' in msg:
-        reply = 'I am your friendly chatbot.'
-    else:
-        reply = "I'm not sure how to respond to that."
+        reply = 'Goodbye! Take care of your health!'
 
+    # Example diseases
+    elif msg == 'diabetes':
+        reply = ("Diabetes is a chronic disease that occurs when the body cannot "
+                 "produce enough insulin or use it effectively.\n"
+                 "👉 Symptoms: frequent urination, thirst, fatigue, blurred vision.\n"
+                 "👉 Treatment: insulin, oral medications, lifestyle changes.\n"
+                 "👉 Prevention: healthy diet, regular exercise, weight control.")
+    elif msg == 'asthma':
+        reply = ("Asthma is a condition in which your airways narrow and swell.\n"
+                 "👉 Symptoms: coughing, wheezing, shortness of breath.\n"
+                 "👉 Treatment: inhalers, bronchodilators, corticosteroids.\n"
+                 "👉 Prevention: avoid allergens, pollution, and cold air.")
+    elif msg == 'covid' or msg == 'covid-19' or msg == 'corona':
+        reply = ("COVID-19 is a viral infection caused by SARS-CoV-2.\n"
+                 "👉 Symptoms: fever, cough, loss of smell/taste, fatigue.\n"
+                 "👉 Treatment: rest, fluids, antiviral medicines (if prescribed).\n"
+                 "👉 Prevention: vaccination, masks, social distancing.")
+    elif msg == 'malaria':
+        reply = ("Malaria is a mosquito-borne infectious disease.\n"
+                 "👉 Symptoms: fever, chills, headache, sweating.\n"
+                 "👉 Treatment: antimalarial drugs.\n"
+                 "👉 Prevention: mosquito nets, repellents, clean environment.")
+    elif msg == 'hypertension' or msg == 'high blood pressure':
+        reply = ("Hypertension means consistently high blood pressure.\n"
+                 "👉 Symptoms: often none, sometimes headaches, dizziness.\n"
+                 "👉 Treatment: lifestyle changes, antihypertensive medicines.\n"
+                 "👉 Prevention: low-salt diet, exercise, stress management.")
+
+    # Fallback
+    else:
+        reply = "I don't have information about that. Please try asking about a disease name."
+
+    # Save chat to DB
     cursor.execute("INSERT INTO chats (user_id, message, reply) VALUES (%s, %s, %s)",
-                (session['user_id'], msg, reply))
+                   (session['user_id'], msg, reply))
     db.commit()
     return reply
+
 
 
 @app.route('/history')
